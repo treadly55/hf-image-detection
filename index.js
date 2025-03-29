@@ -9,6 +9,8 @@ const fileName = document.getElementById('file-name');
 const processButton = document.getElementById('process-button');
 const resetButton = document.getElementById('reset-button');
 const uploadSection = document.getElementById('upload-section');
+const thresholdSlider = document.getElementById('detection-threshold');
+const thresholdValue = document.getElementById('threshold-value');
 
 // Global variables
 let detector = null;
@@ -50,6 +52,11 @@ fileUpload.addEventListener('change', (event) => {
   }
 });
 
+// Update threshold display when slider changes
+thresholdSlider.addEventListener('input', () => {
+  thresholdValue.textContent = thresholdSlider.value;
+});
+
 // Process image button
 processButton.addEventListener('click', async () => {
   if (!selectedImage || !detector) return;
@@ -59,9 +66,12 @@ processButton.addEventListener('click', async () => {
     statusEl.textContent = 'Detecting objects...';
     processButton.disabled = true;
     
+    // Get the current threshold value from the slider
+    const threshold = parseFloat(thresholdSlider.value);
+    
     // Perform detection
     const detectedObjects = await detector(imageEl.src, {
-      threshold: 0.5,  // Lowered threshold for better detection
+      threshold: threshold,  // Use the user-selected threshold
       percentage: true
     });
     

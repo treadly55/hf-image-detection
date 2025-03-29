@@ -89,6 +89,30 @@ input[type="file"] {
   cursor: not-allowed;
 }
 
+.threshold-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 15px 0;
+  width: 100%;
+  padding: 0 10px;
+}
+
+.threshold-container label {
+  margin-right: 10px;
+  white-space: nowrap;
+}
+
+#detection-threshold {
+  width: 150px;
+  margin: 0 10px;
+}
+
+#threshold-value {
+  min-width: 30px;
+  text-align: center;
+}
+
 .status-message {
   margin: 20px 0;
   padding: 10px 15px;
