@@ -11,6 +11,8 @@ const resetButton = document.getElementById('reset-button');
 const uploadSection = document.getElementById('upload-section');
 const thresholdSlider = document.getElementById('detection-threshold');
 const thresholdValue = document.getElementById('threshold-value');
+const maxObjectsSlider = document.getElementById('max-objects');
+const maxObjectsValue = document.getElementById('max-objects-value');
 
 // Global variables
 let detector = null;
@@ -57,6 +59,20 @@ thresholdSlider.addEventListener('input', () => {
   thresholdValue.textContent = thresholdSlider.value;
 });
 
+// Update max objects display when slider changes
+maxObjectsSlider.addEventListener('input', () => {
+  maxObjectsValue.textContent = maxObjectsSlider.value;
+});
+
+// Function to limit and sort detected objects
+function limitObjects(detectedObjects, maxObjects) {
+  // Sort objects by confidence score (highest first)
+  const sortedObjects = [...detectedObjects].sort((a, b) => b.score - a.score);
+  
+  // Limit to maximum number of objects
+  return sortedObjects.slice(0, maxObjects);
+}
+
 // Process image button
 processButton.addEventListener('click', async () => {
   if (!selectedImage || !detector) return;
@@ -69,17 +85,30 @@ processButton.addEventListener('click', async () => {
     // Get the current threshold value from the slider
     const threshold = parseFloat(thresholdSlider.value);
     
+    // Get the maximum number of objects
+    const maxObjects = parseInt(maxObjectsSlider.value);
+    
     // Perform detection
-    const detectedObjects = await detector(imageEl.src, {
+    let detectedObjects = await detector(imageEl.src, {
       threshold: threshold,  // Use the user-selected threshold
       percentage: true
     });
     
+    // Limit and sort the objects by confidence score
+    detectedObjects = limitObjects(detectedObjects, maxObjects);
+    
     // If no objects detected
     if (detectedObjects.length === 0) {
-      statusEl.textContent = 'No objects detected. Try another image.';
+      statusEl.textContent = 'No objects detected. Try another image or adjust sensitivity.';
     } else {
-      statusEl.textContent = `Detected ${detectedObjects.length} objects.`;
+      const objectsFound = detectedObjects.length;
+      const objectsLimit = parseInt(maxObjectsSlider.value);
+      
+      if (objectsFound >= objectsLimit) {
+        statusEl.textContent = `Showing top ${objectsFound} objects (maximum set to ${objectsLimit}).`;
+      } else {
+        statusEl.textContent = `Detected ${objectsFound} objects.`;
+      }
       
       // Draw detection boxes
       detectedObjects.forEach(item => {

@@ -101,14 +101,18 @@ input[type="file"] {
 .threshold-container label {
   margin-right: 10px;
   white-space: nowrap;
+  width: 120px;
+  text-align: right;
 }
 
-#detection-threshold {
+#detection-threshold,
+#max-objects {
   width: 150px;
   margin: 0 10px;
 }
 
-#threshold-value {
+#threshold-value,
+#max-objects-value {
   min-width: 30px;
   text-align: center;
 }
