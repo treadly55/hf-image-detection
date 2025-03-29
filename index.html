@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transformers.js - Object Detection demo</title>
+</head>
+
+<body>
+  <main class="container">
+    <h1>Object Detection</h1>
+    
+    <!-- Upload section -->
+    <div id="upload-section">
+      <p class="instruction">Upload an image to detect objects</p>
+      
+      <div class="upload-container">
+        <label for="file-upload" class="custom-file-upload">
+          <span id="upload-icon">📷</span> Choose Image
+        </label>
+        <input id="file-upload" type="file" accept="image/*" />
+        <p id="file-name">No file selected</p>
+      </div>
+      
+      <button id="process-button" class="action-button" disabled>Detect Objects</button>
+    </div>
+
+    <!-- Status/notification -->
+    <p id="status" class="status-message">Ready to upload an image</p>
+
+    <!-- Image container -->
+    <div id="image-container">
+      <img id="image" src="" alt="Image for object detection" style="display: none;" />
+    </div>
+    
+    <!-- Reset button (initially hidden) -->
+    <button id="reset-button" class="action-button" style="display: none;">Start Again</button>
+  </main>
+
+  <!-- Import your JS code (in module mode) -->
+  <script type="module" src="index.js"></script>
+</body>
+</html>
