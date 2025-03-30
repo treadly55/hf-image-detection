@@ -1,67 +1,136 @@
+// Import the pipeline function from Transformers.js
 import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.8.0';
 
-// DOM Elements
-const statusEl = document.getElementById('status');
-const imageEl = document.getElementById('image');
-const imageContainer = document.getElementById('image-container');
-const fileUpload = document.getElementById('file-upload');
-const fileName = document.getElementById('file-name');
-const processButton = document.getElementById('process-button');
-const resetButton = document.getElementById('reset-button');
-const uploadSection = document.getElementById('upload-section');
-const thresholdSlider = document.getElementById('detection-threshold');
-const thresholdValue = document.getElementById('threshold-value');
-const maxObjectsSlider = document.getElementById('max-objects');
-const maxObjectsValue = document.getElementById('max-objects-value');
+// DOM Elements - using a more organized approach with a single config object
+const elements = {
+  status: document.getElementById('status'),
+  image: document.getElementById('image'),
+  imageContainer: document.getElementById('image-container'),
+  fileUpload: document.getElementById('file-upload'),
+  fileName: document.getElementById('file-name'),
+  processButton: document.getElementById('process-button'),
+  resetButton: document.getElementById('reset-button'),
+  uploadSection: document.getElementById('upload-section'),
+  thresholdSlider: document.getElementById('detection-threshold'),
+  thresholdValue: document.getElementById('threshold-value'),
+  maxObjectsSlider: document.getElementById('max-objects'),
+  maxObjectsValue: document.getElementById('max-objects-value')
+};
 
-// Global variables
-let detector = null;
-let selectedImage = null;
+// Global state
+const state = {
+  detector: null,
+  selectedImage: null,
+  isProcessing: false
+};
 
-// Initialize the detector model
-async function initializeDetector() {
-  statusEl.textContent = 'Loading object detection model...';
-  try {
-    detector = await pipeline('object-detection', 'Xenova/yolos-tiny');
-    statusEl.textContent = 'Ready to upload an image';
-  } catch (err) {
-    console.error(err);
-    statusEl.textContent = 'Error loading model: ' + err.message;
+// Error types for better handling
+const ErrorTypes = {
+  NETWORK: 'network',
+  MODEL: 'model',
+  FILE: 'file',
+  PROCESSING: 'processing'
+};
+
+// Initialize the detector model with retries
+async function initializeDetector(retries = 3) {
+  updateStatus('Loading object detection model...');
+  
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      state.detector = await pipeline('object-detection', 'Xenova/yolos-tiny');
+      updateStatus('Ready to upload an image');
+      return true;
+    } catch (err) {
+      console.error(`Model loading attempt ${attempt + 1} failed:`, err);
+      
+      // If we have more retries, wait before trying again
+      if (attempt < retries - 1) {
+        updateStatus(`Loading model failed, retrying (${attempt + 1}/${retries})...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        handleError(err, ErrorTypes.MODEL);
+        return false;
+      }
+    }
+  }
+}
+
+// Helper function to update status message
+function updateStatus(message) {
+  elements.status.textContent = message;
+}
+
+// Error handling function
+function handleError(error, type) {
+  console.error(`${type} error:`, error);
+  
+  switch (type) {
+    case ErrorTypes.NETWORK:
+      updateStatus('Network error. Please check your connection and try again.');
+      break;
+    case ErrorTypes.MODEL:
+      updateStatus('Error loading model. Please refresh the page or try again later.');
+      break;
+    case ErrorTypes.FILE:
+      updateStatus('Error processing your file. Please try another image.');
+      break;
+    case ErrorTypes.PROCESSING:
+      updateStatus('Error while detecting objects. Please try again.');
+      break;
+    default:
+      updateStatus('An unexpected error occurred: ' + error.message);
   }
 }
 
 // Handle file selection
-fileUpload.addEventListener('change', (event) => {
+elements.fileUpload.addEventListener('change', (event) => {
   const file = event.target.files[0];
-  if (file) {
+  if (!file) {
+    resetUploadState();
+    return;
+  }
+  
+  // Validate file is an image
+  if (!file.type.startsWith('image/')) {
+    updateStatus('Please select a valid image file.');
+    return;
+  }
+  
+  try {
     // Clear previous detection boxes
     clearDetections();
     
     // Update file name display
-    fileName.textContent = file.name;
+    elements.fileName.textContent = file.name;
     
     // Enable the process button
-    processButton.disabled = false;
+    elements.processButton.disabled = false;
     
     // Preview the image
-    selectedImage = URL.createObjectURL(file);
-    imageEl.src = selectedImage;
-    imageEl.style.display = 'block';
+    if (state.selectedImage) {
+      URL.revokeObjectURL(state.selectedImage);
+    }
     
-    statusEl.textContent = 'Image uploaded. Click "Detect Objects" to process.';
-  } else {
+    state.selectedImage = URL.createObjectURL(file);
+    elements.image.src = state.selectedImage;
+    elements.image.style.display = 'block';
+    
+    updateStatus('Image uploaded. Click "Detect Objects" to process.');
+  } catch (err) {
+    handleError(err, ErrorTypes.FILE);
     resetUploadState();
   }
 });
 
 // Update threshold display when slider changes
-thresholdSlider.addEventListener('input', () => {
-  thresholdValue.textContent = thresholdSlider.value;
+elements.thresholdSlider.addEventListener('input', () => {
+  elements.thresholdValue.textContent = elements.thresholdSlider.value;
 });
 
 // Update max objects display when slider changes
-maxObjectsSlider.addEventListener('input', () => {
-  maxObjectsValue.textContent = maxObjectsSlider.value;
+elements.maxObjectsSlider.addEventListener('input', () => {
+  elements.maxObjectsValue.textContent = elements.maxObjectsSlider.value;
 });
 
 // Function to limit and sort detected objects
@@ -73,24 +142,39 @@ function limitObjects(detectedObjects, maxObjects) {
   return sortedObjects.slice(0, maxObjects);
 }
 
+// Generate a color based on the label for consistent colors
+function getColorForLabel(label) {
+  // Simple hash function to generate a number from a string
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) {
+    hash = ((hash << 5) - hash) + label.charCodeAt(i);
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  // Generate a hue based on the hash and use it to create an HSL color
+  const hue = Math.abs(hash % 360);
+  return `hsl(${hue}, 70%, 45%)`;
+}
+
 // Process image button
-processButton.addEventListener('click', async () => {
-  if (!selectedImage || !detector) return;
+elements.processButton.addEventListener('click', async () => {
+  if (!state.selectedImage || !state.detector || state.isProcessing) return;
+  
+  // Prevent double processing
+  state.isProcessing = true;
+  elements.processButton.disabled = true;
   
   try {
     // Update status
-    statusEl.textContent = 'Detecting objects...';
-    processButton.disabled = true;
+    updateStatus('Detecting objects...');
     
-    // Get the current threshold value from the slider
-    const threshold = parseFloat(thresholdSlider.value);
-    
-    // Get the maximum number of objects
-    const maxObjects = parseInt(maxObjectsSlider.value);
+    // Get the current threshold and max objects values from the sliders
+    const threshold = parseFloat(elements.thresholdSlider.value);
+    const maxObjects = parseInt(elements.maxObjectsSlider.value);
     
     // Perform detection
-    let detectedObjects = await detector(imageEl.src, {
-      threshold: threshold,  // Use the user-selected threshold
+    let detectedObjects = await state.detector(elements.image.src, {
+      threshold: threshold,
       percentage: true
     });
     
@@ -99,15 +183,15 @@ processButton.addEventListener('click', async () => {
     
     // If no objects detected
     if (detectedObjects.length === 0) {
-      statusEl.textContent = 'No objects detected. Try another image or adjust sensitivity.';
+      updateStatus('No objects detected. Try another image or adjust sensitivity.');
     } else {
       const objectsFound = detectedObjects.length;
-      const objectsLimit = parseInt(maxObjectsSlider.value);
+      const objectsLimit = parseInt(elements.maxObjectsSlider.value);
       
       if (objectsFound >= objectsLimit) {
-        statusEl.textContent = `Showing top ${objectsFound} objects (maximum set to ${objectsLimit}).`;
+        updateStatus(`Showing top ${objectsFound} objects (maximum set to ${objectsLimit}).`);
       } else {
-        statusEl.textContent = `Detected ${objectsFound} objects.`;
+        updateStatus(`Detected ${objectsFound} objects.`);
       }
       
       // Draw detection boxes
@@ -117,19 +201,20 @@ processButton.addEventListener('click', async () => {
     }
     
     // Show reset button
-    resetButton.style.display = 'block';
+    elements.resetButton.style.display = 'block';
     
   } catch (err) {
-    console.error(err);
-    statusEl.textContent = 'Error processing image: ' + err.message;
+    handleError(err, ErrorTypes.PROCESSING);
+  } finally {
+    state.isProcessing = false;
   }
 });
 
 // Reset button
-resetButton.addEventListener('click', () => {
+elements.resetButton.addEventListener('click', () => {
   resetUploadState();
-  resetButton.style.display = 'none';
-  statusEl.textContent = 'Ready to upload a new image';
+  elements.resetButton.style.display = 'none';
+  updateStatus('Ready to upload a new image');
 });
 
 // Draw detection box for an object
@@ -137,18 +222,18 @@ function drawObjectBox(detectedObject) {
   const { label, score, box } = detectedObject;
   const { xmax, xmin, ymax, ymin } = box;
 
-  // Generate a random color for the box
-  const color = '#' + Math.floor(Math.random() * 0xFFFFFF).toString(16).padStart(6, 0);
+  // Generate a color based on the label for consistency
+  const color = getColorForLabel(label);
   
   // Draw the box
   const boxElement = document.createElement('div');
   boxElement.className = 'bounding-box';
   Object.assign(boxElement.style, {
     borderColor: color,
-    left: 100 * xmin + '%',
-    top: 100 * ymin + '%',
-    width: 100 * (xmax - xmin) + '%',
-    height: 100 * (ymax - ymin) + '%',
+    left: `${100 * xmin}%`,
+    top: `${100 * ymin}%`,
+    width: `${100 * (xmax - xmin)}%`,
+    height: `${100 * (ymax - ymin)}%`,
   });
 
   // Draw label
@@ -158,29 +243,40 @@ function drawObjectBox(detectedObject) {
   labelElement.style.backgroundColor = color;
 
   boxElement.appendChild(labelElement);
-  imageContainer.appendChild(boxElement);
+  elements.imageContainer.appendChild(boxElement);
 }
 
 // Clear detection boxes
 function clearDetections() {
-  const boxes = imageContainer.querySelectorAll('.bounding-box');
+  const boxes = elements.imageContainer.querySelectorAll('.bounding-box');
   boxes.forEach(box => box.remove());
 }
 
 // Reset the upload state
 function resetUploadState() {
-  fileName.textContent = 'No file selected';
-  processButton.disabled = true;
-  imageEl.style.display = 'none';
-  imageEl.src = '';
-  if (selectedImage) {
-    URL.revokeObjectURL(selectedImage);
-    selectedImage = null;
+  elements.fileName.textContent = 'No file selected';
+  elements.processButton.disabled = true;
+  elements.image.style.display = 'none';
+  elements.image.src = '';
+  
+  if (state.selectedImage) {
+    URL.revokeObjectURL(state.selectedImage);
+    state.selectedImage = null;
   }
+  
   clearDetections();
 }
 
 // Initialize on page load
-(async () => {
+window.addEventListener('DOMContentLoaded', async () => {
   await initializeDetector();
-})();
+  
+  // Add offline support notification
+  window.addEventListener('online', () => {
+    updateStatus('Connection restored. Ready to upload an image.');
+  });
+  
+  window.addEventListener('offline', () => {
+    updateStatus('You are offline. Some features may not work properly.');
+  });
+});

@@ -1,0 +1,10 @@
+# netlify.toml - Configuration file for Netlify
+
+[build]
+  publish = "./"
+  
+# Optional: Configure redirects for SPA behavior if needed
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

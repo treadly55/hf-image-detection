@@ -4,15 +4,22 @@
   <meta charset="UTF-8" />
   <link rel="stylesheet" href="style.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Object detection web app powered by Transformers.js" />
   <title>Transformers.js - Object Detection demo</title>
+  <!-- Open Graph tags for better social sharing -->
+  <meta property="og:title" content="Transformers.js Object Detection" />
+  <meta property="og:description" content="Upload images and detect objects with AI" />
+  <meta property="og:type" content="website" />
 </head>
 
 <body>
   <main class="container">
-    <h1>Object Detection</h1>
+    <header>
+      <h1>Object Detection</h1>
+    </header>
     
     <!-- Upload section -->
-    <div id="upload-section">
+    <section id="upload-section">
       <p class="instruction">Upload an image to detect objects</p>
       
       <div class="upload-container">
@@ -33,6 +40,7 @@
           max="0.9" 
           step="0.1" 
           value="0.5" 
+          aria-label="Adjust detection sensitivity"
         >
         <span id="threshold-value">0.5</span>
       </div>
@@ -47,15 +55,16 @@
           max="20" 
           step="1" 
           value="10" 
+          aria-label="Set maximum objects to detect"
         >
         <span id="max-objects-value">10</span>
       </div>
       
       <button id="process-button" class="action-button" disabled>Detect Objects</button>
-    </div>
+    </section>
 
     <!-- Status/notification -->
-    <p id="status" class="status-message">Ready to upload an image</p>
+    <p id="status" class="status-message" role="status">Ready to upload an image</p>
 
     <!-- Image container -->
     <div id="image-container">
@@ -65,6 +74,11 @@
     <!-- Reset button (initially hidden) -->
     <button id="reset-button" class="action-button" style="display: none;">Start Again</button>
   </main>
+
+  <!-- Footer -->
+  <footer>
+    <p>Powered by <a href="https://github.com/xenova/transformers.js" target="_blank" rel="noopener">Transformers.js</a></p>
+  </footer>
 
   <!-- Import your JS code (in module mode) -->
   <script type="module" src="index.js"></script>
