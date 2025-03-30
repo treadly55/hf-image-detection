@@ -162,6 +162,17 @@ async function initializeDetector(retries = 3) {
       debug(`Model loading attempt ${attempt + 1}/${retries}`);
       
       // Add a progress callback for better user feedback
+      // const options = {
+      //   quantized: false,
+      //   progress_callback: (progress) => {
+      //     debug('Model loading progress:', progress);
+      //     if (progress.status === 'progress') {
+      //       const percentage = Math.round(progress.value * 100);
+      //       updateStatus(`Loading model: ${percentage}%`);
+      //     }
+      //   }
+      // };
+
       const options = {
         quantized: false,
         progress_callback: (progress) => {
@@ -170,8 +181,13 @@ async function initializeDetector(retries = 3) {
             const percentage = Math.round(progress.value * 100);
             updateStatus(`Loading model: ${percentage}%`);
           }
-        }
+        },
+        cache_dir: './models', // Try using a local cache directory
+        local_files_only: false, // Allow downloading if not in cache
+        use_auth_token: false, // Don't use authentication
+        revision: 'main' // Specify the revision explicitly
       };
+
       
       debug('Calling pipeline with model name Xenova/yolos-tiny');
       if (loadingFallbackUsed && window.Transformers) {
