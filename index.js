@@ -1,28 +1,65 @@
-// Import the pipeline function from Transformers.js
-// Try to use the ES module version, with fallback to the UMD version
-let pipeline;
-try {
-  const module = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.8.0/dist/transformers.min.js');
-  pipeline = module.pipeline;
-} catch (e) {
-  console.warn('ES module import failed, trying UMD version:', e);
-  // Load UMD version as fallback
-  const script = document.createElement('script');
-  script.src = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.8.0/dist/transformers.min.js';
-  script.async = true;
-  document.head.appendChild(script);
-  
-  // Wait for script to load
-  await new Promise((resolve, reject) => {
-    script.onload = resolve;
-    script.onerror = reject;
-  });
-  
-  // Now the global Transformers object should be available
-  pipeline = window.Transformers.pipeline;
+// Debug flag - set to true to enable detailed console logging
+const DEBUG = true;
+
+// Logging helper function
+function debug(...args) {
+  if (DEBUG) {
+    console.log('[DEBUG]', ...args);
+  }
 }
 
-// DOM Elements - using a more organized approach with a single config object
+debug('Script starting...');
+
+// Try to load the transformers library with fallback options
+let pipeline;
+let loadingFallbackUsed = false;
+
+debug('Setting up transformers.js loading...');
+
+// Function to load the UMD version as fallback
+async function loadUMDFallback() {
+  debug('Loading UMD fallback version...');
+  loadingFallbackUsed = true;
+  
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.8.0/dist/transformers.min.js';
+    script.async = true;
+    
+    script.onload = () => {
+      debug('UMD script loaded successfully');
+      if (window.Transformers && window.Transformers.pipeline) {
+        debug('Transformers global object found');
+        resolve(window.Transformers.pipeline);
+      } else {
+        debug('Transformers global object NOT found after script load');
+        reject(new Error('Failed to load Transformers.js UMD version'));
+      }
+    };
+    
+    script.onerror = () => {
+      debug('Error loading UMD script');
+      reject(new Error('Failed to load Transformers.js UMD script'));
+    };
+    
+    document.head.appendChild(script);
+  });
+}
+
+// First try the ES module version
+async function loadTransformers() {
+  try {
+    debug('Attempting to load ES module version...');
+    const module = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.8.0/dist/transformers.min.js');
+    debug('ES module loaded successfully');
+    return module.pipeline;
+  } catch (e) {
+    debug('ES module import failed:', e);
+    return await loadUMDFallback();
+  }
+}
+
+// DOM Elements
 const elements = {
   status: document.getElementById('status'),
   image: document.getElementById('image'),
@@ -42,10 +79,11 @@ const elements = {
 const state = {
   detector: null,
   selectedImage: null,
-  isProcessing: false
+  isProcessing: false,
+  modelLoaded: false
 };
 
-// Error types for better handling
+// Error types
 const ErrorTypes = {
   NETWORK: 'network',
   MODEL: 'model',
@@ -53,49 +91,15 @@ const ErrorTypes = {
   PROCESSING: 'processing'
 };
 
-// Initialize the detector model with retries
-async function initializeDetector(retries = 3) {
-  updateStatus('Loading object detection model...');
-  
-  for (let attempt = 0; attempt < retries; attempt++) {
-    try {
-      // Add cache busting and use more specific model path
-      const options = {
-        quantized: false,
-        progress_callback: (progress) => {
-          if (progress.status === 'progress') {
-            const percentage = Math.round(progress.value * 100);
-            updateStatus(`Loading model: ${percentage}%`);
-          }
-        }
-      };
-      
-      state.detector = await pipeline('object-detection', 'Xenova/yolos-tiny', options);
-      updateStatus('Ready to upload an image');
-      return true;
-    } catch (err) {
-      console.error(`Model loading attempt ${attempt + 1} failed:`, err);
-      
-      // If we have more retries, wait before trying again
-      if (attempt < retries - 1) {
-        updateStatus(`Loading model failed, retrying (${attempt + 1}/${retries})...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } else {
-        handleError(err, ErrorTypes.MODEL);
-        return false;
-      }
-    }
-  }
-}
-
-// Helper function to update status message
+// Update status message
 function updateStatus(message) {
+  debug('Status update:', message);
   elements.status.textContent = message;
 }
 
 // Error handling function
 function handleError(error, type) {
-  console.error(`${type} error:`, error);
+  console.error(`[ERROR] ${type}:`, error);
   
   switch (type) {
     case ErrorTypes.NETWORK:
@@ -115,21 +119,90 @@ function handleError(error, type) {
   }
 }
 
+// Initialize the detector model with detailed logging
+async function initializeDetector(retries = 3) {
+  updateStatus('Loading object detection model...');
+  debug('Initializing detector, retries =', retries);
+  
+  // First make sure pipeline is available
+  try {
+    if (!pipeline) {
+      debug('Loading pipeline function...');
+      pipeline = await loadTransformers();
+      debug('Pipeline loaded:', !!pipeline);
+    }
+  } catch (err) {
+    debug('Failed to load pipeline:', err);
+    handleError(err, ErrorTypes.MODEL);
+    return false;
+  }
+  
+  // Then load the model
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      debug(`Model loading attempt ${attempt + 1}/${retries}`);
+      
+      // Add a progress callback for better user feedback
+      const options = {
+        quantized: false,
+        progress_callback: (progress) => {
+          debug('Model loading progress:', progress);
+          if (progress.status === 'progress') {
+            const percentage = Math.round(progress.value * 100);
+            updateStatus(`Loading model: ${percentage}%`);
+          }
+        }
+      };
+      
+      debug('Calling pipeline with model name Xenova/yolos-tiny');
+      if (loadingFallbackUsed && window.Transformers) {
+        debug('Using global Transformers object for detection');
+        state.detector = await window.Transformers.pipeline('object-detection', 'Xenova/yolos-tiny', options);
+      } else {
+        debug('Using imported pipeline for detection');
+        state.detector = await pipeline('object-detection', 'Xenova/yolos-tiny', options);
+      }
+      
+      debug('Model loaded successfully, detector =', !!state.detector);
+      state.modelLoaded = true;
+      updateStatus('Ready to upload an image');
+      return true;
+    } catch (err) {
+      console.error(`Model loading attempt ${attempt + 1} failed:`, err);
+      
+      // If we have more retries, wait before trying again
+      if (attempt < retries - 1) {
+        updateStatus(`Loading model failed, retrying (${attempt + 1}/${retries})...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        debug('All model loading attempts failed');
+        handleError(err, ErrorTypes.MODEL);
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
 // Handle file selection
 elements.fileUpload.addEventListener('change', (event) => {
+  debug('File upload change event triggered');
   const file = event.target.files[0];
   if (!file) {
+    debug('No file selected');
     resetUploadState();
     return;
   }
   
   // Validate file is an image
   if (!file.type.startsWith('image/')) {
+    debug('Invalid file type:', file.type);
     updateStatus('Please select a valid image file.');
     return;
   }
   
   try {
+    debug('Processing uploaded file:', file.name);
     // Clear previous detection boxes
     clearDetections();
     
@@ -139,17 +212,21 @@ elements.fileUpload.addEventListener('change', (event) => {
     // Enable the process button
     elements.processButton.disabled = false;
     
-    // Preview the image
+    // Revoke previous object URL if exists
     if (state.selectedImage) {
+      debug('Revoking previous object URL');
       URL.revokeObjectURL(state.selectedImage);
     }
     
+    // Preview the image
     state.selectedImage = URL.createObjectURL(file);
+    debug('Created object URL for image:', state.selectedImage);
     elements.image.src = state.selectedImage;
     elements.image.style.display = 'block';
     
     updateStatus('Image uploaded. Click "Detect Objects" to process.');
   } catch (err) {
+    debug('Error processing uploaded file:', err);
     handleError(err, ErrorTypes.FILE);
     resetUploadState();
   }
@@ -167,6 +244,7 @@ elements.maxObjectsSlider.addEventListener('input', () => {
 
 // Function to limit and sort detected objects
 function limitObjects(detectedObjects, maxObjects) {
+  debug('Limiting detected objects to', maxObjects);
   // Sort objects by confidence score (highest first)
   const sortedObjects = [...detectedObjects].sort((a, b) => b.score - a.score);
   
@@ -188,10 +266,45 @@ function getColorForLabel(label) {
   return `hsl(${hue}, 70%, 45%)`;
 }
 
-// Process image button
+// Process image button with detailed debugging
 elements.processButton.addEventListener('click', async () => {
-  console.log("button pushed")
-  if (!state.selectedImage || !state.detector || state.isProcessing) return;
+  console.log("===============================");
+  console.log("DETECT BUTTON CLICKED");
+  console.log("===============================");
+  console.log("Detector state: ", {
+    selectedImage: !!state.selectedImage,
+    detector: !!state.detector,
+    isProcessing: state.isProcessing,
+    modelLoaded: state.modelLoaded
+  });
+  
+  // Check for required conditions with individual debugging
+  if (!state.selectedImage) {
+    console.log("ERROR: No image selected - returning early");
+    return;
+  }
+  
+  if (!state.detector) {
+    console.log("ERROR: Detector not loaded - returning early");
+    
+    // Try to re-initialize the detector
+    console.log("Attempting to re-initialize the detector...");
+    const success = await initializeDetector(1);
+    if (!success || !state.detector) {
+      console.log("Re-initialization failed");
+      updateStatus('Model not loaded. Please refresh the page and try again.');
+      return;
+    }
+    console.log("Re-initialization successful");
+  }
+  
+  if (state.isProcessing) {
+    console.log("ERROR: Already processing an image - returning early");
+    return;
+  }
+  
+  // If we got here, all conditions passed
+  console.log("All preconditions passed, beginning processing");
   
   // Prevent double processing
   state.isProcessing = true;
@@ -205,21 +318,38 @@ elements.processButton.addEventListener('click', async () => {
     const threshold = parseFloat(elements.thresholdSlider.value);
     const maxObjects = parseInt(elements.maxObjectsSlider.value);
     
-    // Perform detection
-    let detectedObjects = await state.detector(elements.image.src, {
-      threshold: threshold,
-      percentage: true
-    });
+    console.log("Detection parameters:", { threshold, maxObjects });
+    console.log("Image source:", elements.image.src.substring(0, 50) + "...");
+    
+    // Perform detection with a timeout
+    console.log("Starting object detection");
+    let detectionPromise = Promise.race([
+      state.detector(elements.image.src, {
+        threshold: threshold,
+        percentage: true
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Detection timed out after 30 seconds")), 30000)
+      )
+    ]);
+    
+    let detectedObjects = await detectionPromise;
+    console.log("Detection completed successfully");
+    console.log("Raw detection results:", detectedObjects);
     
     // Limit and sort the objects by confidence score
     detectedObjects = limitObjects(detectedObjects, maxObjects);
+    console.log("After limiting:", detectedObjects);
     
     // If no objects detected
     if (detectedObjects.length === 0) {
+      console.log("No objects detected");
       updateStatus('No objects detected. Try another image or adjust sensitivity.');
     } else {
       const objectsFound = detectedObjects.length;
       const objectsLimit = parseInt(elements.maxObjectsSlider.value);
+      
+      console.log(`Found ${objectsFound} objects`);
       
       if (objectsFound >= objectsLimit) {
         updateStatus(`Showing top ${objectsFound} objects (maximum set to ${objectsLimit}).`);
@@ -228,23 +358,30 @@ elements.processButton.addEventListener('click', async () => {
       }
       
       // Draw detection boxes
-      detectedObjects.forEach(item => {
+      console.log("Drawing bounding boxes");
+      detectedObjects.forEach((item, index) => {
+        console.log(`Drawing box ${index + 1} for ${item.label}`);
         drawObjectBox(item);
       });
     }
     
     // Show reset button
+    console.log("Showing reset button");
     elements.resetButton.style.display = 'block';
     
   } catch (err) {
+    console.error("ERROR DURING DETECTION:", err);
     handleError(err, ErrorTypes.PROCESSING);
   } finally {
+    console.log("Processing complete, resetting isProcessing flag");
     state.isProcessing = false;
+    elements.processButton.disabled = false;
   }
 });
 
 // Reset button
 elements.resetButton.addEventListener('click', () => {
+  debug('Reset button clicked');
   resetUploadState();
   elements.resetButton.style.display = 'none';
   updateStatus('Ready to upload a new image');
@@ -254,6 +391,9 @@ elements.resetButton.addEventListener('click', () => {
 function drawObjectBox(detectedObject) {
   const { label, score, box } = detectedObject;
   const { xmax, xmin, ymax, ymin } = box;
+
+  debug(`Drawing box for ${label} (${Math.floor(score * 100)}%) at coordinates:`, 
+    {xmin, ymin, xmax, ymax});
 
   // Generate a color based on the label for consistency
   const color = getColorForLabel(label);
@@ -281,18 +421,21 @@ function drawObjectBox(detectedObject) {
 
 // Clear detection boxes
 function clearDetections() {
+  debug('Clearing detection boxes');
   const boxes = elements.imageContainer.querySelectorAll('.bounding-box');
   boxes.forEach(box => box.remove());
 }
 
 // Reset the upload state
 function resetUploadState() {
+  debug('Resetting upload state');
   elements.fileName.textContent = 'No file selected';
   elements.processButton.disabled = true;
   elements.image.style.display = 'none';
   elements.image.src = '';
   
   if (state.selectedImage) {
+    debug('Revoking object URL');
     URL.revokeObjectURL(state.selectedImage);
     state.selectedImage = null;
   }
@@ -302,14 +445,34 @@ function resetUploadState() {
 
 // Initialize on page load
 window.addEventListener('DOMContentLoaded', async () => {
-  await initializeDetector();
+  debug('DOM content loaded, initializing application');
+  
+  // Check if running on Netlify with proper headers
+  try {
+    const response = await fetch('/_headers', { method: 'HEAD' });
+    debug('Headers file response:', response.status);
+  } catch (e) {
+    debug('No _headers file accessible, which may be normal');
+  }
+  
+  // Start model initialization
+  const success = await initializeDetector();
+  debug('Initial model loading success:', success);
   
   // Add offline support notification
   window.addEventListener('online', () => {
+    debug('Browser came online');
     updateStatus('Connection restored. Ready to upload an image.');
   });
   
   window.addEventListener('offline', () => {
+    debug('Browser went offline');
     updateStatus('You are offline. Some features may not work properly.');
   });
+  
+  // Log initialization complete
+  debug('Application initialization complete');
 });
+
+// Log that the script has finished loading
+debug('Script loaded successfully');

@@ -33,3 +33,5 @@ logs
 *.ntvs*
 *.njsproj
 *.sln
+# Local Netlify folder
+.netlify
