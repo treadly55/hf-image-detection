@@ -190,6 +190,7 @@ function getColorForLabel(label) {
 
 // Process image button
 elements.processButton.addEventListener('click', async () => {
+  console.log("button pushed")
   if (!state.selectedImage || !state.detector || state.isProcessing) return;
   
   // Prevent double processing
