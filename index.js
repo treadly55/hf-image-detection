@@ -124,6 +124,25 @@ async function initializeDetector(retries = 3) {
   updateStatus('Loading object detection model...');
   debug('Initializing detector, retries =', retries);
   
+  // Test model endpoint accessibility
+  try {
+    debug('Testing access to model endpoint...');
+    const testUrl = 'https://huggingface.co/Xenova/yolos-tiny/resolve/main/config.json';
+    const testResponse = await fetch(testUrl, { 
+      method: 'HEAD',
+      mode: 'cors'
+    });
+    debug('Model endpoint test response:', testResponse.status, testResponse.ok);
+    
+    if (!testResponse.ok) {
+      debug('CORS issue detected: Cannot access model endpoint directly');
+      // Continue anyway as the library might handle this differently
+    }
+  } catch (testErr) {
+    debug('Error testing model endpoint access:', testErr);
+    // Continue with model loading anyway
+  }
+  
   // First make sure pipeline is available
   try {
     if (!pipeline) {
