@@ -189,13 +189,13 @@ async function initializeDetector(retries = 3) {
       };
 
       
-      debug('Calling pipeline with model name Xenova/yolos-tiny');
+      debug('Calling pipeline with model name Xenova/detr-resnet-50');
       if (loadingFallbackUsed && window.Transformers) {
         debug('Using global Transformers object for detection');
-        state.detector = await window.Transformers.pipeline('object-detection', 'Xenova/yolos-tiny', options);
+        state.detector = await window.Transformers.pipeline('object-detection', 'Xenova/detr-resnet-50', options);
       } else {
         debug('Using imported pipeline for detection');
-        state.detector = await pipeline('object-detection', 'Xenova/yolos-tiny', options);
+        state.detector = await pipeline('object-detection', 'Xenova/detr-resnet-50', options);
       }
       
       debug('Model loaded successfully, detector =', !!state.detector);
